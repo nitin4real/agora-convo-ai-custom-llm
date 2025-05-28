@@ -5,6 +5,9 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import { chatCompletionRouter } from './routes/chatCompletion'
 import { config } from './libs/utils'
+import http from 'http';
+import https from 'https';
+import fs from 'fs';
 
 const app: Application = express()
 const port = process.env.PORT || config.port
@@ -34,7 +37,19 @@ app.get('/ping', (req, res) => {
 
 // Only start the server if this file is run directly
 if (require.main === module) {
-  app.listen(port, () => {
+  let server;
+
+  if (config.isProd) {
+    const httpsOptions = {
+      key: fs.readFileSync(config.ssl.key || ''),
+      cert: fs.readFileSync(config.ssl.cert || '')
+    };
+    server = https.createServer(httpsOptions, app);
+  } else {
+    server = http.createServer(app);
+  }
+
+  server.listen(port, () => {
     console.log(`Server is running on port ${port}`)
   })
 }
