@@ -47,17 +47,21 @@ function createSystemMessage(): ChatMessage {
  */
 async function processChatCompletion(messages: ChatMessage[], options: ChatCompletionOptions) {
   const { model = 'gpt-4o-mini', stream = false, userId, channel, appId } = options
+  // console.log('Processing chat completion with options:', options)
 
   // Add system message with RAG data
-  const systemMessage = createSystemMessage()
-  const fullMessages = [systemMessage, ...messages]
+  // const systemMessage = createSystemMessage()
+  const fullMessages = [...messages]
+  const tools = functions.map((fn) => ({
+    type: 'function',
+    function: fn,
+  }))
 
   // Build request options
   const requestOptions = {
     model,
     messages: fullMessages,
-    functions,
-    function_call: 'auto' as const,
+    tools
   }
 
   if (!stream) {
@@ -86,7 +90,7 @@ async function processChatCompletion(messages: ChatMessage[], options: ChatCompl
  */
 async function processNonStreamingRequest(requestOptions: any, fullMessages: ChatMessage[], context: RequestContext) {
   const { userId, channel, appId } = context
-
+  // console.log('Processing non-streaming request with fullMessages:', requestOptions)
   // Make initial request
   const response = await openai.chat.completions.create({
     ...requestOptions,
@@ -99,12 +103,13 @@ async function processNonStreamingRequest(requestOptions: any, fullMessages: Cha
     if (fc?.name && fc.arguments) {
       const fn = functionMap[fc.name]
       if (!fn) {
-        console.error('Unknown function name:', fc.name)
+        console.error('Unknown function name:', fc.name, 'with arguments:', fc.arguments)
         return response
       }
 
       // Parse arguments
       let parsedArgs
+      console.log('Function call arguments:', fc.arguments)
       try {
         parsedArgs = JSON.parse(fc.arguments)
       } catch (err) {
@@ -173,13 +178,13 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
 
           // Send chunk downstream as SSE
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(part)}\n\n`))
-
           // Handle function calls if needed
-          if (part.choices[0].finish_reason === 'function_call' || part.choices[0].finish_reason === 'tool_calls') {
+          const functionCall = part.choices[0].delta?.function_call
+          const toolCalls = part.choices[0].delta?.tool_calls
+          if (functionCall || toolCalls) {
             // Extract function call from tool_calls or function_call (depending on model)
             const toolCalls = part.choices[0].delta?.tool_calls || []
-
-            toolCalls.forEach((toolCall: any) => {
+            toolCalls.forEach((toolCall: any) => { // this is wrong -> if 2 tool calls are made, it will only get the name of  last one and the arguments of all.
               if (toolCall.function?.name) {
                 functionCallName = toolCall.function.name
               }
@@ -216,8 +221,7 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
                   const updatedMessages = [
                     ...fullMessages,
                     {
-                      role: 'function' as const,
-                      name: functionCallName,
+                      role: 'system' as const, // this can be a tool call or a function call // will need the toolcall id as well.
                       content: functionResult,
                     },
                   ]

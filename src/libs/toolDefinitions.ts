@@ -23,26 +23,17 @@ interface FunctionDefinition {
  */
 const functions: FunctionDefinition[] = [
   {
-    name: 'order_sandwich',
-    description: 'Place a sandwich order with a given filling. Logs the order to console.',
+    name: 'save_data_point',
+    description: 'Use this to save a data point for the user.',
     parameters: {
       type: 'object',
       properties: {
-        filling: {
+        data_point: {
           type: 'string',
-          description: "Type of filling (e.g. 'Turkey', 'Ham', 'Veggie')",
+          description: 'The data point to save for the user.',
         },
       },
-      required: ['filling'],
-    },
-  },
-  {
-    name: 'send_photo',
-    description: 'Request a photo to be sent. This allows you to send a photo to the user (No arguments needed.)',
-    parameters: {
-      type: 'object',
-      properties: {},
-      required: [],
+      required: ['data_point'],
     },
   },
 ]

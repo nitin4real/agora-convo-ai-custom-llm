@@ -7,6 +7,8 @@ interface PeerMessageResponse {
 
 interface FunctionArgs {
   filling?: string
+  concept_name?: string
+  data_point?: string
 }
 
 type FunctionHandler = (appId: string, userId: string, channel: string, args: FunctionArgs) => Promise<string> | string
@@ -36,7 +38,7 @@ async function sendPeerMessage(
   try {
     const response = await axios.post(url, data, {
       headers: {
-        Authorization: 'Basic ' + config.agora.authToken,
+        Authorization: 'agora token= ' + config.agora.authToken,
         'Content-Type': 'application/json',
       },
     })
@@ -99,12 +101,22 @@ async function sendPhoto(appId: string, userId: string, channel: string): Promis
   return `Photo sent successfully to user ${userId}.`
 }
 
+function showConceptPhoto(userId: string, channel: string, conceptName: string): string {
+  console.log('Showing concept photo for', userId, 'in', channel, 'with concept name:', conceptName)
+  return `Concept photo shown for ${conceptName}.`
+}
+
+async function saveDataPoint(appId: string, userId: string, channel: string, message: string): Promise<string> {
+  const payload = `{"textToDisplay":"${message}"}`
+  await sendPeerMessage(appId, config.agentId, userId, payload)
+  return `Data point saved for ${message}.`
+}
+
 /**
  * Function map to execute functions by name
  */
 const functionMap: Record<string, FunctionHandler> = {
-  send_photo: (appId, userId, channel, _args) => sendPhoto(appId, userId, channel),
-  order_sandwich: (appId, userId, channel, args) => orderSandwich(userId, channel, args.filling as string),
+  save_data_point: (appId, userId, channel, args) => saveDataPoint(appId, userId, channel, args.data_point as string),
 }
 
 export { sendPeerMessage, orderSandwich, sendPhoto, functionMap }

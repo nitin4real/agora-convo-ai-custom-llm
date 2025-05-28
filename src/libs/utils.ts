@@ -20,6 +20,7 @@ interface Config {
   agora: AgoraConfig
   llm: LLMConfig
   agentId: string
+  jwtSecret: string
 }
 
 function validateEnv(): Config {
@@ -54,6 +55,7 @@ function validateEnv(): Config {
       useResponsesApi: process.env.USE_RESPONSES_API === 'true',
     },
     agentId: process.env.AGENT_ID!,
+    jwtSecret: process.env.JWT_SECRET!,
   }
 
   return config

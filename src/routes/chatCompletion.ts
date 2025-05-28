@@ -17,10 +17,10 @@ router.post('/completion', (async (req: Request, res: Response) => {
       model = 'gpt-4o-mini',
       stream = false,
       channel = 'ccc',
-      userId = '111',
-      appId = '20b7c51ff4c644ab80cf5a4e646b0537',
+      userId = '',
+      appId = '',
     } = req.body
-
+    
     if (!messages) {
       return res.status(400).json({ error: 'Missing "messages" in request body' })
     }
@@ -32,10 +32,6 @@ router.post('/completion', (async (req: Request, res: Response) => {
     // This server supports both the Chat Completions API and the Responses API
     // Use either processChatCompletion or processResponses based on config
     const processHandler = config.llm.useResponsesApi ? processResponses : processChatCompletion
-
-    console.log(
-      `Using ${config.llm.useResponsesApi ? 'OpenAI Responses API' : 'OpenAI Chat Completions API'} for request`,
-    )
 
     const result = await processHandler(messages, {
       model,
