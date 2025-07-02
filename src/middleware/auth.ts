@@ -7,10 +7,13 @@ export const validateRequest = (req: Request, res: Response, next: NextFunction)
   const token = authHeader.replace('Bearer ', '')
   // use jwt to verify the token
   try {
-    const decoded = jwt.verify(token, config.jwtSecret)
-    console.log('Decoded token:', decoded)
-    req.body.userId = (decoded as JwtPayload)?.userId || ''
-    req.body.appId = (decoded as JwtPayload)?.appId || ''
+    if (token !== config.llm.openaiApiKey) {
+      throw new Error('Invalid token')
+    }
+    // const decoded = jwt.verify(token, config.jwtSecret)
+    // console.log('Decoded token:', decoded)
+    // req.body.userId = (decoded as JwtPayload)?.userId || ''
+    // req.body.appId = (decoded as JwtPayload)?.appId || ''
 
   } catch (error) {
     console.error('Error verifying token:', error)

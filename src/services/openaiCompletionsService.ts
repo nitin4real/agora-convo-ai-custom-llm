@@ -1,9 +1,9 @@
 import OpenAI from 'openai'
-import { functions } from '../libs/toolDefinitions'
-import { functionMap } from '../libs/tools'
-import { getFormattedRagData } from './ragService'
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import { getConceptPhoto } from '../libs/tools'
+import { ChatCompletionChunk, ChatCompletionMessageParam, ChatCompletionMessageToolCall, ChatCompletionTool, ChatCompletionToolMessageParam } from 'openai/resources/chat/completions'
 import { config } from '../libs/utils'
+import { getUserFunctions } from '../libs/edtech-functions'
+import { ToolCallDelta } from 'openai/resources/beta/threads/runs/steps'
 type ChatMessage = ChatCompletionMessageParam
 
 interface ChatCompletionOptions {
@@ -12,8 +12,12 @@ interface ChatCompletionOptions {
   userId: string
   channel: string
   appId: string
+  tools?: any[]
 }
-
+interface FunctionCall {
+  name: string
+  arguments: string
+}
 interface RequestContext {
   userId: string
   channel: string
@@ -25,17 +29,12 @@ const openai = new OpenAI({
   apiKey: config.llm.openaiApiKey,
 })
 
-/**
- * Creates a system message with RAG data
- * @returns {ChatMessage} System message with RAG data
- */
+
 function createSystemMessage(): ChatMessage {
   return {
     role: 'system',
     content:
-      `You have access to the following knowledge:\n` +
-      getFormattedRagData() +
-      `\nAnswer questions using this data and be confident about its contents.`,
+      `You will have access to Functions for Show Question, Show Image, And Publish Message. You can use any to send data to the user's Screen.`
   }
 }
 
@@ -46,33 +45,22 @@ function createSystemMessage(): ChatMessage {
  * @returns {Promise<Object>} OpenAI response
  */
 async function processChatCompletion(messages: ChatMessage[], options: ChatCompletionOptions) {
-  const { model = 'gpt-4o-mini', stream = false, userId, channel, appId } = options
+  const { model = 'gpt-4o-mini', stream = false, userId, channel, appId, tools } = options
   // console.log('Processing chat completion with options:', options)
 
-  // Add system message with RAG data
-  // const systemMessage = createSystemMessage()
-  const fullMessages = [...messages]
-  const tools = functions.map((fn) => ({
-    type: 'function',
-    function: fn,
-  }))
+  const systemMessage = createSystemMessage()
+  const fullMessages = [systemMessage, ...messages]
 
   // Build request options
   const requestOptions = {
     model,
     messages: fullMessages,
-    tools
+    tools: getUserFunctions()
   }
 
   if (!stream) {
-    // Non-streaming mode
-    return processNonStreamingRequest(requestOptions, fullMessages, {
-      userId,
-      channel,
-      appId,
-    })
+    console.log('Non-streaming mode')
   } else {
-    // Streaming mode
     return processStreamingRequest(requestOptions, fullMessages, {
       userId,
       channel,
@@ -81,69 +69,6 @@ async function processChatCompletion(messages: ChatMessage[], options: ChatCompl
   }
 }
 
-/**
- * Process a non-streaming request
- * @param {Object} requestOptions - OpenAI request options
- * @param {ChatMessage[]} fullMessages - Complete message history
- * @param {RequestContext} context - Request context (userId, channel, appId)
- * @returns {Promise<Object>} Final response
- */
-async function processNonStreamingRequest(requestOptions: any, fullMessages: ChatMessage[], context: RequestContext) {
-  const { userId, channel, appId } = context
-  // console.log('Processing non-streaming request with fullMessages:', requestOptions)
-  // Make initial request
-  const response = await openai.chat.completions.create({
-    ...requestOptions,
-    stream: false,
-  })
-
-  // Check if function call was made
-  if (response.choices && response.choices[0]?.finish_reason === 'function_call') {
-    const fc = response.choices[0].message?.function_call
-    if (fc?.name && fc.arguments) {
-      const fn = functionMap[fc.name]
-      if (!fn) {
-        console.error('Unknown function name:', fc.name, 'with arguments:', fc.arguments)
-        return response
-      }
-
-      // Parse arguments
-      let parsedArgs
-      console.log('Function call arguments:', fc.arguments)
-      try {
-        parsedArgs = JSON.parse(fc.arguments)
-      } catch (err) {
-        console.error('Failed to parse function call arguments:', err)
-        throw new Error('Invalid function call arguments')
-      }
-
-      // Execute function
-      const functionResult = await fn(appId, userId, channel, parsedArgs)
-
-      // Append function result to messages
-      const updatedMessages = [
-        ...fullMessages,
-        {
-          role: 'function' as const,
-          name: fc.name,
-          content: functionResult,
-        },
-      ]
-
-      // Get final answer
-      const finalResponse = await openai.chat.completions.create({
-        model: requestOptions.model,
-        messages: updatedMessages,
-        stream: false,
-      })
-
-      return finalResponse
-    }
-  }
-
-  // Return original response if no function was called
-  return response
-}
 
 /**
  * Generate a streaming response
@@ -154,7 +79,7 @@ async function processNonStreamingRequest(requestOptions: any, fullMessages: Cha
  */
 async function processStreamingRequest(requestOptions: any, fullMessages: ChatMessage[], context: RequestContext) {
   const { userId, channel, appId } = context
-
+  let overAllIndex = 0;
   // Make initial streaming request
   const stream = (await openai.chat.completions.create({
     ...requestOptions,
@@ -165,84 +90,102 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
   const encoder = new TextEncoder()
 
   // Create function call accumulators
-  let functionCallName: string | undefined
-  let functionCallArgs = ''
+  let toolCallList: FunctionCall[] = []
 
   // Create readable stream
   return new ReadableStream({
     async start(controller) {
       try {
         for await (const part of stream) {
-          // Check if we have a delta
-          const choice = part.choices[0]
 
-          // Send chunk downstream as SSE
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(part)}\n\n`))
           // Handle function calls if needed
-          const functionCall = part.choices[0].delta?.function_call
           const toolCalls = part.choices[0].delta?.tool_calls
-          if (functionCall || toolCalls) {
-            // Extract function call from tool_calls or function_call (depending on model)
-            const toolCalls = part.choices[0].delta?.tool_calls || []
-            toolCalls.forEach((toolCall: any) => { // this is wrong -> if 2 tool calls are made, it will only get the name of  last one and the arguments of all.
-              if (toolCall.function?.name) {
-                functionCallName = toolCall.function.name
-              }
-              if (toolCall.function?.arguments) {
-                functionCallArgs += toolCall.function.arguments
+
+          if (toolCalls) {
+            toolCalls.forEach((toolCall: any) => {
+              const toolCallIndex = toolCall.index
+              if (toolCallList[toolCallIndex]) {
+                if (toolCall.function?.arguments) {
+                  toolCallList[toolCallIndex].arguments += toolCall.function?.arguments
+                }
+              } else {
+                toolCallList[toolCallIndex] = {
+                  name: toolCall.function?.name,
+                  arguments: toolCall.function?.arguments
+                }
               }
             })
-
-            // Also check for legacy function_call format
-            const functionCall = part.choices[0].delta?.function_call
-            if (functionCall) {
-              if (functionCall.name) {
-                functionCallName = functionCall.name
-              }
-              if (functionCall.arguments) {
-                functionCallArgs += functionCall.arguments
-              }
-            }
           }
 
           // If finish_reason is encountered, attempt function call
           if (part.choices[0].finish_reason) {
-            if (functionCallName && functionCallArgs) {
-              const fn = functionMap[functionCallName]
-              if (fn) {
+            console.log('toolCallList', toolCallList)
+            if (toolCallList.length > 0) {
+              overAllIndex = toolCallList.length;
+              toolCallList.forEach(async (toolCall) => {
                 try {
                   // Parse arguments
-                  const parsedArgs = JSON.parse(functionCallArgs)
-
-                  // Execute function
-                  const functionResult = await fn(appId, userId, channel, parsedArgs)
-
-                  // Append function message
-                  const updatedMessages = [
-                    ...fullMessages,
-                    {
-                      role: 'system' as const, // this can be a tool call or a function call // will need the toolcall id as well.
-                      content: functionResult,
-                    },
-                  ]
-
-                  // Final streaming call
-                  const finalResponse = await openai.chat.completions.create({
-                    model: requestOptions.model,
-                    messages: updatedMessages,
-                    stream: true,
-                  })
-
-                  for await (const part2 of finalResponse) {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(part2)}\n\n`))
+                  const functionName = toolCall.name
+                  const parsedArgs = JSON.parse(toolCall.arguments)
+                  const question_data_to_frontend = {
+                    type: "question",
+                    questionDescription: parsedArgs.questionDescription,
+                    options: parsedArgs.options
                   }
+
+                  const image_data_to_frontend = {
+                    type: "concept_image",
+                    conceptName: "",
+                    imageUrl: "",
+                    imageDescription: ""
+                  }
+
+                  let publish_message_arguments = ""
+
+                  if (functionName === 'show_question') {
+                    publish_message_arguments = JSON.stringify(question_data_to_frontend)
+                  } else if (functionName === 'show_image') {
+                    const functionResult = getConceptPhoto(parsedArgs.conceptName)
+                    image_data_to_frontend.conceptName = functionResult.name
+                    image_data_to_frontend.imageUrl = functionResult.imageUrl
+                    image_data_to_frontend.imageDescription = functionResult.description
+                    publish_message_arguments = JSON.stringify(image_data_to_frontend)
+                  }
+
+                  let publish_message_tool_call: ToolCallDelta = {
+                    id: Date.now().toString() + Math.random().toString(36).substring(2, 15),
+                    index: 1,
+                    type: "function",
+                    function: {
+                      name: "_publish_message",
+                      arguments: JSON.stringify({ content: publish_message_arguments })
+                    }
+                  }
+
+                  overAllIndex++;
+
+                  const toolCallParams: Partial<ChatCompletionChunk> = {
+                    choices: [
+                      {
+                        index: 0,
+                        delta: {
+                          role: "assistant",
+                          content: null,
+                          tool_calls: [publish_message_tool_call]
+                        },
+                        finish_reason: null
+                      }
+                    ]
+                  }
+
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallParams)}\n\n`))
+
                 } catch (err) {
                   console.error('Function call error:', err)
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Function call failed' })}\n\n`))
                 }
-              } else {
-                console.error('Unknown function name:', functionCallName)
-              }
+              })
             }
 
             // End SSE stream
@@ -263,5 +206,7 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
   })
 }
 
+
 export { processChatCompletion }
 export type { ChatMessage, ChatCompletionOptions, RequestContext }
+
