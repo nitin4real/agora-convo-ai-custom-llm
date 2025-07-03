@@ -21,6 +21,8 @@ interface Config {
   llm: LLMConfig
   agentId: string
   jwtSecret: string
+  ssl: any
+  isProd: boolean
 }
 
 function validateEnv(): Config {
@@ -56,6 +58,11 @@ function validateEnv(): Config {
     },
     agentId: process.env.AGENT_ID!,
     jwtSecret: process.env.JWT_SECRET!,
+    ssl: {
+      key: process.env.SSL_KEY_PATH,
+      cert: process.env.SSL_CERT_PATH
+    },
+    isProd: process.env.IS_PRODUCTION === 'true'
   }
 
   return config
