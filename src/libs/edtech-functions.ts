@@ -6,7 +6,7 @@ const getEdtechFunctions = (): ChatCompletionTool[] => {
         type: "function",
         function: {
             name: "show_question",
-            description: "Show question to the user.",
+            description: "ALways use this function to show question to the user on the screen. Always use this function to ask a multiple choice question to the user.",
             parameters: {
                 type: "object",
                 properties: {

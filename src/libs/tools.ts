@@ -63,7 +63,7 @@ export const listOfImagesWithConcepts = {
   },
   "numbers": {
     name: 'Numbers System',
-    imageUrl: "https://s3.eu-central-1.amazonaws.com/studysmarter-mediafiles/media/1865576/summary_images/Untitled_Artwork_93.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA4OLDUDE42UZHAIET%2F20250517%2Feu-central-1%2Fs3%2Faws4_request&X-Amz-Date=20250517T030922Z&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=438a6854b77f858506ee5fb48213b1072d4bf05be308534578f4e6ed452f3ca2",
+    imageUrl: "https://svg.template.creately.com/isff0mbz1",
     description: "Image of number system, Natural numbers, Whole numbers, Integers, Rational numbers, Irrational numbers, Real numbers, Complex numbers. It shows the relationship between the different types of numbers."
   },
   "circles": {

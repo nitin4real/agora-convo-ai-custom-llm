@@ -4,7 +4,11 @@ import { ChatCompletionChunk, ChatCompletionMessageParam, ChatCompletionMessageT
 import { config } from '../libs/utils'
 import { getUserFunctions } from '../libs/edtech-functions'
 import { ToolCallDelta } from 'openai/resources/beta/threads/runs/steps'
+import { v4 as uuidv4 } from 'uuid';
+
 type ChatMessage = ChatCompletionMessageParam
+
+
 
 interface ChatCompletionOptions {
   model?: string
@@ -29,12 +33,27 @@ const openai = new OpenAI({
   apiKey: config.llm.openaiApiKey,
 })
 
+interface ToolCallData {
+  type: "question" | "concept_image"
+  image_description: string
+  orignal_arguments: string
+}
+
+const publish_message_id_to_content_map: Record<string, ToolCallData> = {}
 
 function createSystemMessage(): ChatMessage {
   return {
     role: 'system',
     content:
-      `You will have access to Functions for Show Question, Show Image, And Publish Message. You can use any to send data to the user's Screen.`
+      `You will have access to Functions for Show Question. You can use any to send data to the user's Screen. 
+      Your output will be sent to TTS. Don't use complext sentences. Use simple sentences as spoken words.
+      To start explaining a concept to user, show a image to the user and ask a question about the image.
+      Use function calling to send data to the user's Screen.
+      Always use function calling to ask question to the user.
+      Always use function calling to show image to the user.
+      User Reallife examples are better than abstract examples.
+      Don't use asterisk to highlight important words. Use simple paragraph to talk to the user. Without using any complex formulas symbols. Use spoken words.
+      `
   }
 }
 
@@ -50,6 +69,34 @@ async function processChatCompletion(messages: ChatMessage[], options: ChatCompl
 
   const systemMessage = createSystemMessage()
   const fullMessages = [systemMessage, ...messages]
+
+  // iterate over the messages and add the publish_message_id to the message
+  fullMessages.forEach((message) => {
+
+    if ((message as any).tool_calls) {
+      const tool_calls = (message as any).tool_calls;
+      tool_calls?.forEach((tool_call: any) => {
+        if (tool_call?.function?.name === "_publish_message") {
+          const publish_message_id = tool_call.id;
+          const orignal_tool_call_data = publish_message_id_to_content_map[publish_message_id];
+          if (orignal_tool_call_data) {
+            tool_call.function.arguments = orignal_tool_call_data.orignal_arguments;
+            tool_call.function.name = orignal_tool_call_data.type;
+          }
+        }
+      })
+    } else if (message.role === "tool") {
+      const tool_call_id = message.tool_call_id
+      const tool_call_data = publish_message_id_to_content_map[tool_call_id]
+      if (tool_call_data) {
+        if (tool_call_data.type === "question") {
+          message.content = "Question Displayed to the user"
+        } else if (tool_call_data.type === "concept_image" && tool_call_data.image_description) {
+          message.content = "Image Displayed to the user. Image Description: " + tool_call_data.image_description
+        }
+      }
+    }
+  })
 
   // Build request options
   const requestOptions = {
@@ -120,7 +167,6 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
 
           // If finish_reason is encountered, attempt function call
           if (part.choices[0].finish_reason) {
-            console.log('toolCallList', toolCallList)
             if (toolCallList.length > 0) {
               overAllIndex = toolCallList.length;
               toolCallList.forEach(async (toolCall) => {
@@ -141,6 +187,14 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
                     imageDescription: ""
                   }
 
+
+                  const publish_message_id = uuidv4();
+                  publish_message_id_to_content_map[publish_message_id] = {
+                    type: functionName as "question" | "concept_image",
+                    image_description: "",
+                    orignal_arguments: toolCall.arguments
+                  };
+
                   let publish_message_arguments = ""
 
                   if (functionName === 'show_question') {
@@ -150,12 +204,13 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
                     image_data_to_frontend.conceptName = functionResult.name
                     image_data_to_frontend.imageUrl = functionResult.imageUrl
                     image_data_to_frontend.imageDescription = functionResult.description
+                    publish_message_id_to_content_map[publish_message_id].image_description = functionResult.description
                     publish_message_arguments = JSON.stringify(image_data_to_frontend)
                   }
 
                   let publish_message_tool_call: ToolCallDelta = {
-                    id: Date.now().toString() + Math.random().toString(36).substring(2, 15),
-                    index: 1,
+                    id: publish_message_id,
+                    index: overAllIndex,
                     type: "function",
                     function: {
                       name: "_publish_message",
@@ -179,6 +234,7 @@ async function processStreamingRequest(requestOptions: any, fullMessages: ChatMe
                     ]
                   }
 
+                  // console.log('toolCallParams', JSON.stringify(toolCallParams))
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallParams)}\n\n`))
 
                 } catch (err) {

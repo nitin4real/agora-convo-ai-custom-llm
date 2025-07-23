@@ -9,7 +9,7 @@ router.use(validateRequest as RequestHandler)
 
 // Chat completion endpoint
 router.post('/completions', (async (req: Request, res: Response) => {
-  console.log('completions', req.body)
+  // console.log('completions', JSON.stringify(req.body))
   try {
     const {
       messages,

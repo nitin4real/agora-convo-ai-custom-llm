@@ -27,7 +27,8 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "openai": "^4.20.0",
-    "serverless-http": "^3.2.0"
+    "serverless-http": "^3.2.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.9",
