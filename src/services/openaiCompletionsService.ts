@@ -45,14 +45,15 @@ function createSystemMessage(): ChatMessage {
   return {
     role: 'system',
     content:
-      `You will have access to Functions for Show Question. You can use any to send data to the user's Screen. 
-      Your output will be sent to TTS. Don't use complext sentences. Use simple sentences as spoken words.
-      To start explaining a concept to user, show a image to the user and ask a question about the image.
+      `You can use any to send data to the user's Screen. 
       Use function calling to send data to the user's Screen.
-      Always use function calling to ask question to the user.
+      Always use function calling show_question to ask question to the user.
       Always use function calling to show image to the user.
       User Reallife examples are better than abstract examples.
       Don't use asterisk to highlight important words. Use simple paragraph to talk to the user. Without using any complex formulas symbols. Use spoken words.
+      Don't use chat message to ask question. Always use function calling to ask question to the user.
+      Your output will be sent to TTS. Don't use complext sentences. Use simple sentences as spoken words.
+      To start explaining a concept to user, show a image to the user and ask a question about the image.
       `
   }
 }
